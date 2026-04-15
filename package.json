@@ -1,0 +1,14 @@
+{
+  "name": "screendock",
+  "private": true,
+  "packageManager": "pnpm@10.29.3",
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "build": "pnpm -r run build",
+    "dev:backend": "pnpm --filter @screendock/backend dev",
+    "dev:frontend": "pnpm --filter @screendock/frontend dev"
+  }
+}

@@ -2,3 +2,8 @@ assets
 **/.venv/
 **/__pycache__/
 **/output/
+**/node_modules/
+.pnpm-store/
+.pnpm-state/
+.pnpm-cache/
+*.log
