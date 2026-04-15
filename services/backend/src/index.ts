@@ -4,6 +4,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { buildIndex, runSearch, type SearchIndex } from './search.ts';
 
 const OCR_OUTPUT_DIR = resolve(
   import.meta.dirname,
@@ -13,6 +14,15 @@ const OCR_OUTPUT_DIR = resolve(
 const app = new Hono();
 app.use('*', logger());
 app.use('/api/*', cors());
+
+let indexPromise: Promise<SearchIndex> | null = null;
+function getIndex() {
+  indexPromise ??= buildIndex(OCR_OUTPUT_DIR).then((idx) => {
+    console.log(`search index built: ${idx.size} text rows`);
+    return idx;
+  });
+  return indexPromise;
+}
 
 app.get('/api/health', (c) => c.json({ ok: true }));
 
@@ -47,6 +57,16 @@ app.get('/api/videos/:stem', async (c) => {
   if (raw === null) return c.json({ error: 'not found' }, 404);
   return c.body(raw, 200, { 'content-type': 'application/json; charset=utf-8' });
 });
+
+app.get('/api/search', async (c) => {
+  const q = c.req.query('q') ?? '';
+  const limit = Math.min(100, Math.max(1, Number(c.req.query('limit') ?? 30)));
+  const index = await getIndex();
+  const result = await runSearch(index, q, limit);
+  return c.json(result);
+});
+
+void getIndex();
 
 const port = Number(process.env.PORT ?? 8787);
 serve({ fetch: app.fetch, port }, ({ port }) => {
