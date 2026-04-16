@@ -182,172 +182,142 @@ export function DebugPage({ stem }: { stem: string }) {
   }
 
   return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', padding: 24, maxWidth: 1200, margin: '0 auto' }}>
-      <h1 style={{ fontSize: 20 }}>
-        <a href="/" style={{ textDecoration: 'none', color: 'inherit' }}>ScreenDock</a>
-        {' / '}
-        <span style={{ color: '#666' }}>debug</span>
-        {' / '}
-        {stem}
-      </h1>
-
-      {/* meta */}
-      <table style={{ fontSize: 13, color: '#555', marginBottom: 12, borderCollapse: 'collapse' }}>
-        <tbody>
-          <tr>
-            <td style={{ paddingRight: 16 }}>video</td>
-            <td><strong>{data.video}</strong></td>
-          </tr>
-          <tr>
-            <td style={{ paddingRight: 16 }}>duration</td>
-            <td>{data.meta.duration_seconds.toFixed(1)}s ({fmt(data.meta.duration_seconds)})</td>
-          </tr>
-          <tr>
-            <td style={{ paddingRight: 16 }}>fps / frames</td>
-            <td>{data.meta.fps.toFixed(2)} / {data.meta.frame_count}</td>
-          </tr>
-          <tr>
-            <td style={{ paddingRight: 16 }}>OCR</td>
-            <td>lang={data.lang} variant={data.variant}</td>
-          </tr>
-          <tr>
-            <td style={{ paddingRight: 16 }}>extraction</td>
-            <td>sample_fps={data.meta.sample_fps} phash_threshold={data.meta.phash_threshold}</td>
-          </tr>
-          <tr>
-            <td style={{ paddingRight: 16 }}>keyframes</td>
-            <td><strong>{data.keyframes.length}</strong></td>
-          </tr>
-        </tbody>
-      </table>
-
-      {/* video + bbox overlay */}
-      <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
-        <video
-          ref={videoRef}
-          src={`${BACKEND_ORIGIN}/api/assets/${data.video}`}
-          controls
-          preload="auto"
-          onSeeked={redraw}
-          style={{ width: '100%', maxHeight: '50vh', background: '#000', borderRadius: 8, display: 'block' }}
-        />
-        <canvas
-          ref={canvasRef}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            pointerEvents: 'none',
-          }}
-        />
-      </div>
-
-      {/* keyframe timeline header */}
-      <div style={{ margin: '12px 0 4px', fontSize: 13, color: '#666', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span>{data.keyframes.length} keyframes — click to seek &amp; show bbox, expand for OCR detail</span>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+    <div style={{ fontFamily: 'system-ui, sans-serif', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* header */}
+      <header style={{ padding: '8px 16px', borderBottom: '1px solid #ddd', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <h1 style={{ fontSize: 16, margin: 0 }}>
+          <a href="/" style={{ textDecoration: 'none', color: 'inherit' }}>ScreenDock</a>
+          {' / '}
+          <span style={{ color: '#666' }}>debug</span>
+          {' / '}
+          {stem}
+        </h1>
+        <span style={{ fontSize: 12, color: '#888' }}>
+          {data.meta.duration_seconds.toFixed(1)}s · {data.meta.fps.toFixed(1)}fps · {data.keyframes.length} kf · lang={data.lang}
+        </span>
+        <span style={{ fontSize: 12, color: '#aaa' }}>
+          sample_fps={data.meta.sample_fps} phash_threshold={data.meta.phash_threshold}
+        </span>
+        <label style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 12 }}>
           <input type="checkbox" checked={showBbox} onChange={(e) => setShowBbox(e.target.checked)} />
-          bbox overlay
+          bbox
         </label>
-      </div>
+      </header>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-        {data.keyframes.map((kf, idx) => {
-          const expanded = expandedKf.has(idx);
-          const isActive = activeKf === idx;
-          return (
-            <div
-              key={kf.frame}
-              style={{
-                border: isActive ? '2px solid #39f' : '1px solid #ddd',
-                borderRadius: 6,
-                padding: '6px 10px',
-                background: isActive ? '#f0f6ff' : '#fafafa',
-              }}
-            >
-              {/* summary row */}
+      {/* body: left panel + right video */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+
+        {/* left: keyframe list */}
+        <aside style={{ width: 380, flexShrink: 0, overflow: 'auto', borderRight: '1px solid #ddd', fontSize: 12 }}>
+          {data.keyframes.map((kf, idx) => {
+            const expanded = expandedKf.has(idx);
+            const isActive = activeKf === idx;
+            return (
               <div
+                key={kf.frame}
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns: '70px 70px 1fr 80px 40px',
-                  gap: 8,
-                  alignItems: 'center',
-                  cursor: 'pointer',
-                  fontSize: 13,
+                  borderBottom: '1px solid #eee',
+                  padding: '4px 8px',
+                  background: isActive ? '#e8f0ff' : 'transparent',
                 }}
-                onClick={() => seekTo(kf.timestamp, idx)}
               >
-                <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
-                  {fmt(kf.timestamp)}
-                </span>
-                <span style={{ color: '#888', fontSize: 11 }}>
-                  f={kf.frame}
-                </span>
-                <span
-                  style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#444' }}
-                  title={kf.texts.map((t) => t.text).join(' | ')}
-                >
-                  {kf.texts.slice(0, 5).map((t) => t.text).join(' · ') || '(no text)'}
-                </span>
-                <span style={{ color: '#888', fontSize: 12 }}>
-                  {kf.texts.length} text(s)
-                </span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); toggleExpand(idx); }}
+                {/* summary row */}
+                <div
                   style={{
-                    background: 'none',
-                    border: '1px solid #ccc',
-                    borderRadius: 3,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
                     cursor: 'pointer',
-                    fontSize: 11,
-                    padding: '1px 6px',
                   }}
+                  onClick={() => seekTo(kf.timestamp, idx)}
                 >
-                  {expanded ? '-' : '+'}
-                </button>
-              </div>
-
-              {/* expanded detail */}
-              {expanded && (
-                <div style={{ marginTop: 8, fontSize: 12, borderTop: '1px solid #eee', paddingTop: 6 }}>
-                  <div style={{ color: '#999', marginBottom: 4 }}>
-                    phash: <code>{kf.phash}</code>
-                  </div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ textAlign: 'left', color: '#888', borderBottom: '1px solid #eee' }}>
-                        <th style={{ padding: '2px 6px', width: 30 }}>#</th>
-                        <th style={{ padding: '2px 6px' }}>text</th>
-                        <th style={{ padding: '2px 6px', width: 60 }}>conf</th>
-                        <th style={{ padding: '2px 6px', width: 200 }}>bbox</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {kf.texts.map((t, ti) => (
-                        <tr
-                          key={ti}
-                          style={{ borderBottom: '1px solid #f5f5f5' }}
-                        >
-                          <td style={{ padding: '2px 6px', color: '#bbb' }}>{ti}</td>
-                          <td style={{ padding: '2px 6px' }}>{t.text}</td>
-                          <td style={{ padding: '2px 6px', color: confColor(t.confidence), fontVariantNumeric: 'tabular-nums' }}>
-                            {t.confidence.toFixed(3)}
-                          </td>
-                          <td style={{ padding: '2px 6px', fontFamily: 'monospace', fontSize: 10, color: '#999' }}>
-                            {t.bbox
-                              ? t.bbox.map(([x, y]) => `${Math.round(x)},${Math.round(y)}`).join(' ')
-                              : '-'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, width: 42, flexShrink: 0 }}>
+                    {fmt(kf.timestamp)}
+                  </span>
+                  <span style={{ color: '#888', width: 50, flexShrink: 0, fontSize: 10 }}>
+                    f={kf.frame}
+                  </span>
+                  <span
+                    style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, color: '#444' }}
+                    title={kf.texts.map((t) => t.text).join(' | ')}
+                  >
+                    {kf.texts.slice(0, 4).map((t) => t.text).join(' · ') || '(no text)'}
+                  </span>
+                  <span style={{ color: '#aaa', flexShrink: 0, fontSize: 10 }}>
+                    {kf.texts.length}
+                  </span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleExpand(idx); }}
+                    style={{
+                      background: 'none',
+                      border: '1px solid #ccc',
+                      borderRadius: 3,
+                      cursor: 'pointer',
+                      fontSize: 10,
+                      padding: '0 5px',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {expanded ? '-' : '+'}
+                  </button>
                 </div>
-              )}
-            </div>
-          );
-        })}
+
+                {/* expanded detail */}
+                {expanded && (
+                  <div style={{ marginTop: 4, paddingTop: 4, borderTop: '1px solid #f0f0f0' }}>
+                    <div style={{ color: '#999', marginBottom: 2, fontSize: 10 }}>
+                      phash: <code>{kf.phash}</code>
+                    </div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                      <thead>
+                        <tr style={{ textAlign: 'left', color: '#888' }}>
+                          <th style={{ padding: '1px 4px', width: 20 }}>#</th>
+                          <th style={{ padding: '1px 4px' }}>text</th>
+                          <th style={{ padding: '1px 4px', width: 44 }}>conf</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {kf.texts.map((t, ti) => (
+                          <tr key={ti} style={{ borderBottom: '1px solid #f8f8f8' }}>
+                            <td style={{ padding: '1px 4px', color: '#ccc' }}>{ti}</td>
+                            <td style={{ padding: '1px 4px' }}>{t.text}</td>
+                            <td style={{ padding: '1px 4px', color: confColor(t.confidence), fontVariantNumeric: 'tabular-nums' }}>
+                              {(t.confidence * 100).toFixed(0)}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </aside>
+
+        {/* right: video + bbox overlay */}
+        <section ref={containerRef} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#111', overflow: 'hidden' }}>
+          <div style={{ position: 'relative' }}>
+            <video
+              ref={videoRef}
+              src={`${BACKEND_ORIGIN}/api/assets/${data.video}`}
+              controls
+              preload="auto"
+              onSeeked={redraw}
+              style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 50px)', display: 'block' }}
+            />
+            <canvas
+              ref={canvasRef}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                pointerEvents: 'none',
+              }}
+            />
+          </div>
+        </section>
       </div>
-    </main>
+    </div>
   );
 }
