@@ -58,14 +58,31 @@ function drawBboxes(
   const rect = video.getBoundingClientRect();
   canvas.width = rect.width;
   canvas.height = rect.height;
-  const sx = rect.width / vw;
-  const sy = rect.height / vh;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // The video maintains aspect ratio inside the element (object-fit:contain).
+  // Compute the actual rendered area and the letterbox/pillarbox offset.
+  const videoAspect = vw / vh;
+  const elemAspect = rect.width / rect.height;
+  let renderW: number, renderH: number, offsetX: number, offsetY: number;
+  if (videoAspect > elemAspect) {
+    renderW = rect.width;
+    renderH = rect.width / videoAspect;
+    offsetX = 0;
+    offsetY = (rect.height - renderH) / 2;
+  } else {
+    renderH = rect.height;
+    renderW = rect.height * videoAspect;
+    offsetX = (rect.width - renderW) / 2;
+    offsetY = 0;
+  }
+  const sx = renderW / vw;
+  const sy = renderH / vh;
 
   for (const t of texts) {
     if (!t.bbox) continue;
     const color = confColor(t.confidence);
-    const pts = t.bbox.map(([x, y]) => [x * sx, y * sy] as const);
+    const pts = t.bbox.map(([x, y]) => [x * sx + offsetX, y * sy + offsetY] as const);
 
     ctx.beginPath();
     ctx.moveTo(pts[0][0], pts[0][1]);
