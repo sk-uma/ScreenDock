@@ -54,21 +54,25 @@ def iter_keyframes(
     if not cap.isOpened():
         raise RuntimeError(f"Cannot open video: {video_path}")
     try:
-        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-        step = max(1, int(round(fps / sample_fps)))
+        sample_interval = 1.0 / sample_fps
         prev_hash: imagehash.ImageHash | None = None
+        next_sample_ts = 0.0
         idx = 0
         while True:
+            # CAP_PROP_POS_MSEC *before* read() gives the PTS of the frame
+            # about to be decoded — matches what browsers use for currentTime.
+            ts = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
             ok, frame = cap.read()
             if not ok:
                 break
-            if idx % step == 0:
+            if ts >= next_sample_ts:
+                next_sample_ts = ts + sample_interval
                 pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                 h = imagehash.phash(pil)
                 if prev_hash is None or (h - prev_hash) >= phash_threshold:
                     yield Keyframe(
                         index=idx,
-                        timestamp=idx / fps,
+                        timestamp=ts,
                         phash=str(h),
                         image_bgr=frame,
                     )
