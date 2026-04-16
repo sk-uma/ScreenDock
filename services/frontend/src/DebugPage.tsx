@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const BACKEND_ORIGIN =
   typeof window !== 'undefined' && window.location.port === '5173'
@@ -44,12 +44,61 @@ function confColor(c: number) {
   return '#c33';
 }
 
+function drawBboxes(
+  canvas: HTMLCanvasElement,
+  video: HTMLVideoElement,
+  texts: TextEntry[],
+) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  if (!vw || !vh) return;
+
+  const rect = video.getBoundingClientRect();
+  canvas.width = rect.width;
+  canvas.height = rect.height;
+  const sx = rect.width / vw;
+  const sy = rect.height / vh;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (const t of texts) {
+    if (!t.bbox) continue;
+    const color = confColor(t.confidence);
+    const pts = t.bbox.map(([x, y]) => [x * sx, y * sy] as const);
+
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.closePath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = color + '18';
+    ctx.fill();
+
+    const labelY = Math.min(...pts.map(([, y]) => y));
+    const labelX = Math.min(...pts.map(([x]) => x));
+    const fontSize = Math.max(10, Math.min(14, 12 * sx));
+    ctx.font = `${fontSize}px system-ui, sans-serif`;
+    const label = `${t.text}  ${(t.confidence * 100).toFixed(0)}%`;
+    const tw = ctx.measureText(label).width;
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(labelX, labelY - fontSize - 4, tw + 8, fontSize + 6);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label, labelX + 4, labelY - 5);
+  }
+}
+
 export function DebugPage({ stem }: { stem: string }) {
   const [data, setData] = useState<OcrData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeKf, setActiveKf] = useState<number | null>(null);
+  const [showBbox, setShowBbox] = useState(true);
   const [expandedKf, setExpandedKf] = useState<Set<number>>(new Set());
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch(`/api/videos/${encodeURIComponent(stem)}`)
@@ -61,12 +110,31 @@ export function DebugPage({ stem }: { stem: string }) {
       .catch((e) => setError(String(e)));
   }, [stem]);
 
+  const redraw = useCallback(() => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    if (!canvas || !video || !data) return;
+    if (!showBbox || activeKf === null) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) { canvas.width = 0; canvas.height = 0; }
+      return;
+    }
+    drawBboxes(canvas, video, data.keyframes[activeKf].texts);
+  }, [data, activeKf, showBbox]);
+
+  useEffect(() => {
+    redraw();
+    const obs = new ResizeObserver(redraw);
+    if (videoRef.current) obs.observe(videoRef.current);
+    return () => obs.disconnect();
+  }, [redraw]);
+
   const seekTo = (timestamp: number, kfIndex: number) => {
     setActiveKf(kfIndex);
     const el = videoRef.current;
     if (el) {
       el.currentTime = timestamp;
-      el.play();
+      el.pause();
     }
   };
 
@@ -136,18 +204,34 @@ export function DebugPage({ stem }: { stem: string }) {
         </tbody>
       </table>
 
-      {/* video */}
-      <video
-        ref={videoRef}
-        src={`${BACKEND_ORIGIN}/api/assets/${data.video}`}
-        controls
-        preload="auto"
-        style={{ width: '100%', maxHeight: '50vh', background: '#000', borderRadius: 8 }}
-      />
+      {/* video + bbox overlay */}
+      <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
+        <video
+          ref={videoRef}
+          src={`${BACKEND_ORIGIN}/api/assets/${data.video}`}
+          controls
+          preload="auto"
+          onSeeked={redraw}
+          style={{ width: '100%', maxHeight: '50vh', background: '#000', borderRadius: 8, display: 'block' }}
+        />
+        <canvas
+          ref={canvasRef}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            pointerEvents: 'none',
+          }}
+        />
+      </div>
 
-      {/* keyframe timeline */}
-      <div style={{ margin: '12px 0 4px', fontSize: 13, color: '#666' }}>
-        {data.keyframes.length} keyframes — click to seek, expand to see OCR detail
+      {/* keyframe timeline header */}
+      <div style={{ margin: '12px 0 4px', fontSize: 13, color: '#666', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>{data.keyframes.length} keyframes — click to seek &amp; show bbox, expand for OCR detail</span>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+          <input type="checkbox" checked={showBbox} onChange={(e) => setShowBbox(e.target.checked)} />
+          bbox overlay
+        </label>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
