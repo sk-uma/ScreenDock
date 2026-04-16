@@ -31,36 +31,44 @@ function formatTimestamp(seconds: number) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+const BACKEND_ORIGIN =
+  typeof window !== 'undefined' && window.location.port === '5173'
+    ? 'http://localhost:8787'
+    : '';
+
 function VideoPlayer({ video, timestamp }: { video: string; timestamp: number }) {
   const ref = useRef<HTMLVideoElement>(null);
-  const seekTarget = useRef(timestamp);
-  seekTarget.current = timestamp;
+  const [videoError, setVideoError] = useState<string | null>(null);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const onLoaded = () => {
-      el.currentTime = seekTarget.current;
+    const seek = () => {
+      el.currentTime = timestamp;
     };
-    el.addEventListener('loadedmetadata', onLoaded);
-    if (el.readyState >= 1) el.currentTime = seekTarget.current;
-    return () => el.removeEventListener('loadedmetadata', onLoaded);
-  }, [video]);
-
-  const handleSeek = () => {
-    const el = ref.current;
-    if (el) el.currentTime = timestamp;
-  };
-
-  useEffect(handleSeek, [timestamp]);
+    el.addEventListener('loadedmetadata', seek);
+    if (el.readyState >= 1) seek();
+    return () => el.removeEventListener('loadedmetadata', seek);
+  }, [video, timestamp]);
 
   return (
-    <video
-      ref={ref}
-      src={`/api/assets/${video}`}
-      controls
-      style={{ width: '100%', maxHeight: '60vh', background: '#000', borderRadius: 8 }}
-    />
+    <>
+      <video
+        ref={ref}
+        src={`${BACKEND_ORIGIN}/api/assets/${video}`}
+        controls
+        autoPlay
+        preload="auto"
+        onError={() => {
+          const el = ref.current;
+          const code = el?.error?.code;
+          const msg = el?.error?.message ?? 'unknown';
+          setVideoError(`Media error (code=${code}): ${msg}`);
+        }}
+        style={{ width: '100%', maxHeight: '60vh', background: '#000', borderRadius: 8 }}
+      />
+      {videoError && <p style={{ color: 'crimson', fontSize: 13 }}>{videoError}</p>}
+    </>
   );
 }
 
