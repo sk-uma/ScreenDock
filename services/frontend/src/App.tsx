@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 type VideoSummary = {
   stem: string;
@@ -31,12 +31,46 @@ function formatTimestamp(seconds: number) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+function VideoPlayer({ video, timestamp }: { video: string; timestamp: number }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const seekTarget = useRef(timestamp);
+  seekTarget.current = timestamp;
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onLoaded = () => {
+      el.currentTime = seekTarget.current;
+    };
+    el.addEventListener('loadedmetadata', onLoaded);
+    if (el.readyState >= 1) el.currentTime = seekTarget.current;
+    return () => el.removeEventListener('loadedmetadata', onLoaded);
+  }, [video]);
+
+  const handleSeek = () => {
+    const el = ref.current;
+    if (el) el.currentTime = timestamp;
+  };
+
+  useEffect(handleSeek, [timestamp]);
+
+  return (
+    <video
+      ref={ref}
+      src={`/api/assets/${video}`}
+      controls
+      style={{ width: '100%', maxHeight: '60vh', background: '#000', borderRadius: 8 }}
+    />
+  );
+}
+
 export function App() {
   const [videos, setVideos] = useState<VideoSummary[] | null>(null);
   const [query, setQuery] = useState('');
   const [searchResult, setSearchResult] = useState<SearchResponse | null>(null);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<{ video: string; timestamp: number } | null>(null);
 
   useEffect(() => {
     fetch('/api/videos')
@@ -72,7 +106,7 @@ export function App() {
   }, [query]);
 
   return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', padding: 24, maxWidth: 960 }}>
+    <main style={{ fontFamily: 'system-ui, sans-serif', padding: 24, maxWidth: 960, margin: '0 auto' }}>
       <h1>ScreenDock</h1>
 
       <input
@@ -92,6 +126,29 @@ export function App() {
 
       {error && <p style={{ color: 'crimson' }}>error: {error}</p>}
 
+      {selected && (
+        <section style={{ marginTop: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 13, color: '#666' }}>
+              {selected.video} · {formatTimestamp(selected.timestamp)}
+            </span>
+            <button
+              onClick={() => setSelected(null)}
+              style={{
+                background: 'none',
+                border: '1px solid #ccc',
+                borderRadius: 4,
+                padding: '2px 10px',
+                cursor: 'pointer',
+              }}
+            >
+              close
+            </button>
+          </div>
+          <VideoPlayer video={selected.video} timestamp={selected.timestamp} />
+        </section>
+      )}
+
       {query.trim() && (
         <section style={{ marginTop: 16 }}>
           {searching && !searchResult && <p>searching…</p>}
@@ -104,18 +161,19 @@ export function App() {
                 {searchResult.hits.map((h) => (
                   <li
                     key={h.id}
+                    onClick={() => setSelected({ video: h.video, timestamp: h.timestamp })}
                     style={{
                       borderBottom: '1px solid #eee',
-                      padding: '8px 0',
+                      padding: '8px 4px',
                       display: 'grid',
-                      gridTemplateColumns: '120px 80px 1fr',
+                      gridTemplateColumns: '80px 1fr',
                       gap: 12,
                       alignItems: 'baseline',
+                      cursor: 'pointer',
                     }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#f5f5f5')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                   >
-                    <span style={{ fontSize: 12, color: '#888' }} title={h.stem}>
-                      {h.video}
-                    </span>
                     <span style={{ fontVariantNumeric: 'tabular-nums', color: '#555' }}>
                       {formatTimestamp(h.timestamp)}
                     </span>
@@ -128,7 +186,7 @@ export function App() {
         </section>
       )}
 
-      {!query.trim() && (
+      {!query.trim() && !selected && (
         <section style={{ marginTop: 24 }}>
           <h2 style={{ fontSize: 16 }}>ingested videos</h2>
           {videos === null && !error && <p>loading…</p>}

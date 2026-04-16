@@ -2,13 +2,19 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
-import { readdir, readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { createReadStream } from 'node:fs';
+import { readdir, readFile, stat } from 'node:fs/promises';
+import { extname, resolve } from 'node:path';
 import { buildIndex, runSearch, type SearchIndex } from './search.ts';
 
 const OCR_OUTPUT_DIR = resolve(
   import.meta.dirname,
   '../../../packages/video-ocr/output',
+);
+
+const ASSETS_DIR = resolve(
+  import.meta.dirname,
+  '../../../assets',
 );
 
 const app = new Hono();
@@ -64,6 +70,68 @@ app.get('/api/search', async (c) => {
   const index = await getIndex();
   const result = await runSearch(index, q, limit);
   return c.json(result);
+});
+
+const MIME: Record<string, string> = {
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mov': 'video/quicktime',
+};
+
+app.get('/api/assets/:filename', async (c) => {
+  const filename = c.req.param('filename');
+  if (!/^[A-Za-z0-9._-]+$/.test(filename)) return c.json({ error: 'bad name' }, 400);
+  const filePath = resolve(ASSETS_DIR, filename);
+  const fileStat = await stat(filePath).catch(() => null);
+  if (!fileStat) return c.json({ error: 'not found' }, 404);
+
+  const size = fileStat.size;
+  const mime = MIME[extname(filename)] ?? 'application/octet-stream';
+  const range = c.req.header('range');
+
+  if (range) {
+    const match = /bytes=(\d+)-(\d*)/.exec(range);
+    const start = match ? Number(match[1]) : 0;
+    const end = match && match[2] ? Number(match[2]) : size - 1;
+    return new Response(
+      new ReadableStream({
+        start(ctrl) {
+          const rs = createReadStream(filePath, { start, end });
+          rs.on('data', (chunk: string | Buffer) => ctrl.enqueue(typeof chunk === 'string' ? Buffer.from(chunk) : chunk));
+          rs.on('end', () => ctrl.close());
+          rs.on('error', (e) => ctrl.error(e));
+        },
+      }),
+      {
+        status: 206,
+        headers: {
+          'content-type': mime,
+          'content-range': `bytes ${start}-${end}/${size}`,
+          'content-length': String(end - start + 1),
+          'accept-ranges': 'bytes',
+        },
+      },
+    );
+  }
+
+  return new Response(
+    new ReadableStream({
+      start(ctrl) {
+        const rs = createReadStream(filePath);
+        rs.on('data', (chunk: string | Buffer) => ctrl.enqueue(typeof chunk === 'string' ? Buffer.from(chunk) : chunk));
+        rs.on('end', () => ctrl.close());
+        rs.on('error', (e) => ctrl.error(e));
+      },
+    }),
+    {
+      status: 200,
+      headers: {
+        'content-type': mime,
+        'content-length': String(size),
+        'accept-ranges': 'bytes',
+      },
+    },
+  );
 });
 
 void getIndex();
