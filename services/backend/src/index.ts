@@ -5,6 +5,7 @@ import { logger } from 'hono/logger';
 import { createReadStream } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
+import { Readable } from 'node:stream';
 import { buildIndex, runSearch, type SearchIndex } from './search.ts';
 
 const OCR_OUTPUT_DIR = resolve(
@@ -93,45 +94,27 @@ app.get('/api/assets/:filename', async (c) => {
     const match = /bytes=(\d+)-(\d*)/.exec(range);
     const start = match ? Number(match[1]) : 0;
     const end = match && match[2] ? Number(match[2]) : size - 1;
-    return new Response(
-      new ReadableStream({
-        start(ctrl) {
-          const rs = createReadStream(filePath, { start, end });
-          rs.on('data', (chunk: string | Buffer) => ctrl.enqueue(typeof chunk === 'string' ? Buffer.from(chunk) : chunk));
-          rs.on('end', () => ctrl.close());
-          rs.on('error', (e) => ctrl.error(e));
-        },
-      }),
-      {
-        status: 206,
-        headers: {
-          'content-type': mime,
-          'content-range': `bytes ${start}-${end}/${size}`,
-          'content-length': String(end - start + 1),
-          'accept-ranges': 'bytes',
-        },
-      },
-    );
-  }
-
-  return new Response(
-    new ReadableStream({
-      start(ctrl) {
-        const rs = createReadStream(filePath);
-        rs.on('data', (chunk: string | Buffer) => ctrl.enqueue(typeof chunk === 'string' ? Buffer.from(chunk) : chunk));
-        rs.on('end', () => ctrl.close());
-        rs.on('error', (e) => ctrl.error(e));
-      },
-    }),
-    {
-      status: 200,
+    const stream = Readable.toWeb(createReadStream(filePath, { start, end })) as ReadableStream;
+    return new Response(stream, {
+      status: 206,
       headers: {
         'content-type': mime,
-        'content-length': String(size),
+        'content-range': `bytes ${start}-${end}/${size}`,
+        'content-length': String(end - start + 1),
         'accept-ranges': 'bytes',
       },
+    });
+  }
+
+  const stream = Readable.toWeb(createReadStream(filePath)) as ReadableStream;
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      'content-type': mime,
+      'content-length': String(size),
+      'accept-ranges': 'bytes',
     },
-  );
+  });
 });
 
 void getIndex();
