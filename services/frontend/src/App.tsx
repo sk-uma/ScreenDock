@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { DebugPage } from './DebugPage';
 
 type VideoSummary = {
   stem: string;
@@ -72,7 +73,20 @@ function VideoPlayer({ video, timestamp }: { video: string; timestamp: number })
   );
 }
 
+function usePathname() {
+  const [path, setPath] = useState(window.location.pathname);
+  useEffect(() => {
+    const onPop = () => setPath(window.location.pathname);
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  return path;
+}
+
 export function App() {
+  const pathname = usePathname();
+  const debugMatch = pathname.match(/^\/debug\/(.+)$/);
+  if (debugMatch) return <DebugPage stem={decodeURIComponent(debugMatch[1])} />;
   const [videos, setVideos] = useState<VideoSummary[] | null>(null);
   const [query, setQuery] = useState('');
   const [searchResult, setSearchResult] = useState<SearchResponse | null>(null);
@@ -204,7 +218,8 @@ export function App() {
               {videos.map((v) => (
                 <li key={v.stem}>
                   <strong>{v.video}</strong> · {v.duration_seconds.toFixed(1)}s ·{' '}
-                  {v.keyframe_count} keyframes
+                  {v.keyframe_count} keyframes ·{' '}
+                  <a href={`/debug/${v.stem}`} style={{ fontSize: 13 }}>debug</a>
                 </li>
               ))}
             </ul>
