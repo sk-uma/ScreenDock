@@ -4,6 +4,7 @@ from pathlib import Path
 
 from video_ocr.frames import iter_keyframes, probe_video
 from video_ocr.ocr import run_ocr
+from video_ocr.ocr_vl import run_ocr_vl
 
 
 def process_video(
@@ -13,6 +14,8 @@ def process_video(
     phash_threshold: int = 6,
     lang: str = "japan",
     variant: str = "mobile",
+    engine: str = "ppocr",
+    device: str = "cpu",
 ) -> Path:
     video_path = Path(video_path)
     output_dir = Path(output_dir)
@@ -24,7 +27,8 @@ def process_video(
     print(
         f"video: {video_path.name}  "
         f"fps={meta.fps:.2f}  duration={meta.duration_seconds:.1f}s  "
-        f"frames={meta.frame_count}"
+        f"frames={meta.frame_count}  "
+        f"engine={engine}"
     )
 
     records = []
@@ -32,7 +36,10 @@ def process_video(
         iter_keyframes(video_path, sample_fps=sample_fps, phash_threshold=phash_threshold),
         1,
     ):
-        texts = run_ocr(kf.image_bgr, lang=lang, variant=variant)
+        if engine == "ppocr-vl":
+            texts = run_ocr_vl(kf.image_bgr, device=device)
+        else:
+            texts = run_ocr(kf.image_bgr, lang=lang, variant=variant)
         records.append(
             {
                 "frame": kf.index,
@@ -52,6 +59,7 @@ def process_video(
     payload = {
         "video": video_path.name,
         "meta": asdict(meta),
+        "engine": engine,
         "lang": lang,
         "variant": variant,
         "keyframes": records,

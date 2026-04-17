@@ -14,7 +14,9 @@ def main(
     sample_fps: float = typer.Option(2.0, "--sample-fps"),
     phash_threshold: int = typer.Option(6, "--phash-threshold"),
     lang: str = typer.Option("japan", "--lang"),
-    variant: str = typer.Option("mobile", "--variant", help="mobile or server"),
+    variant: str = typer.Option("mobile", "--variant", help="mobile or server (ppocr engine)"),
+    engine: str = typer.Option("ppocr", "--engine", help="ppocr (PP-OCRv5) or ppocr-vl (PaddleOCR-VL 1.5)"),
+    device: str = typer.Option("cpu", "--device", help="cpu / gpu:0 / xpu / dcu"),
 ):
     process_video(
         video_path=video,
@@ -23,6 +25,8 @@ def main(
         phash_threshold=phash_threshold,
         lang=lang,
         variant=variant,
+        engine=engine,
+        device=device,
     )
 
 
