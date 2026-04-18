@@ -117,6 +117,9 @@ def render_preview(
     else:
         frame, actual_ts = extract_frame_at(input_path, timestamp_s)
 
+    h, w = frame.shape[:2]
+    print(f"input: {input_path.name}  size={w}x{h}  dtype={frame.dtype}")
+
     t0 = time.perf_counter()
     if engine == "ppocr-vl":
         texts = run_ocr_vl(frame, device=device)
