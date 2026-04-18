@@ -16,6 +16,7 @@ def process_video(
     variant: str = "mobile",
     engine: str = "ppocr",
     device: str = "cpu",
+    max_keyframes: int | None = None,
 ) -> Path:
     video_path = Path(video_path)
     output_dir = Path(output_dir)
@@ -54,6 +55,8 @@ def process_video(
             f"  [{i:>3}] frame={kf.index:>6} t={kf.timestamp:6.2f}s  "
             f"texts={len(texts)}"
         )
+        if max_keyframes is not None and i >= max_keyframes:
+            break
 
     out_path = output_dir / f"{video_path.stem}.json"
     payload = {

@@ -17,6 +17,7 @@ def main(
     variant: str = typer.Option("mobile", "--variant", help="mobile or server (ppocr engine)"),
     engine: str = typer.Option("ppocr", "--engine", help="ppocr (PP-OCRv5) or ppocr-vl (PaddleOCR-VL 1.5)"),
     device: str = typer.Option("cpu", "--device", help="cpu / gpu:0 / xpu / dcu"),
+    max_keyframes: int = typer.Option(None, "--max-keyframes", "-n", help="Stop after N keyframes (useful for quick tests)"),
 ):
     process_video(
         video_path=video,
@@ -27,6 +28,7 @@ def main(
         variant=variant,
         engine=engine,
         device=device,
+        max_keyframes=max_keyframes,
     )
 
 
