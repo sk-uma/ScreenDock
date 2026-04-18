@@ -113,6 +113,7 @@ def render_preview(
     device: str = "cpu",
     lang: str = "japan",
     variant: str = "mobile",
+    max_new_tokens: int = 512,
 ) -> tuple[Path, float | None, list[dict], float]:
     """Render one frame (from image file or from video at `timestamp_s`) with
     bbox overlay. Returns (output_path, actual_timestamp_or_None, texts,
@@ -135,7 +136,7 @@ def render_preview(
 
     t0 = time.perf_counter()
     if engine == "ppocr-vl":
-        texts = run_ocr_vl(frame, device=device)
+        texts = run_ocr_vl(frame, device=device, max_new_tokens=max_new_tokens)
     else:
         texts = run_ocr(frame, lang=lang, variant=variant)
     ocr_elapsed = time.perf_counter() - t0

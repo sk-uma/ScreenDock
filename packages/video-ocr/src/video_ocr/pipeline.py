@@ -18,6 +18,7 @@ def process_video(
     engine: str = "ppocr",
     device: str = "cpu",
     max_keyframes: int | None = None,
+    max_new_tokens: int = 512,
 ) -> Path:
     video_path = Path(video_path)
     output_dir = Path(output_dir)
@@ -46,7 +47,7 @@ def process_video(
         digest = hashlib.md5(kf.image_bgr.tobytes()).hexdigest()[:12]
         t0 = time.perf_counter()
         if engine == "ppocr-vl":
-            texts = run_ocr_vl(kf.image_bgr, device=device)
+            texts = run_ocr_vl(kf.image_bgr, device=device, max_new_tokens=max_new_tokens)
         else:
             texts = run_ocr(kf.image_bgr, lang=lang, variant=variant)
         elapsed = time.perf_counter() - t0

@@ -19,6 +19,7 @@ def run(
     engine: str = typer.Option("ppocr", "--engine", help="ppocr (PP-OCRv5) or ppocr-vl (PaddleOCR-VL 1.5)"),
     device: str = typer.Option("cpu", "--device", help="cpu / gpu:0 / xpu / dcu"),
     max_keyframes: int = typer.Option(None, "--max-keyframes", "-n", help="Stop after N keyframes (useful for quick tests)"),
+    max_new_tokens: int = typer.Option(512, "--max-new-tokens", help="Cap per-block VLM generation (ppocr-vl only)"),
 ):
     """Run OCR over the whole video and write the JSON index."""
     process_video(
@@ -31,6 +32,7 @@ def run(
         engine=engine,
         device=device,
         max_keyframes=max_keyframes,
+        max_new_tokens=max_new_tokens,
     )
 
 
@@ -46,6 +48,7 @@ def preview(
     device: str = typer.Option("cpu", "--device"),
     lang: str = typer.Option("japan", "--lang"),
     variant: str = typer.Option("mobile", "--variant"),
+    max_new_tokens: int = typer.Option(512, "--max-new-tokens"),
 ):
     """Run OCR on a single frame (from video or image) and save a PNG with bbox overlay."""
     out_path, actual_ts, texts, ocr_seconds = render_preview(
@@ -56,6 +59,7 @@ def preview(
         device=device,
         lang=lang,
         variant=variant,
+        max_new_tokens=max_new_tokens,
     )
     where = f"image: {input.name}" if actual_ts is None else f"frame @ t={actual_ts:.3f}s"
     print(f"{where}  ({len(texts)} texts, engine={engine}, device={device}, ocr={ocr_seconds:.2f}s)")

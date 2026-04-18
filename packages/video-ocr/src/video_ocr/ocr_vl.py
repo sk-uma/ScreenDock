@@ -236,9 +236,17 @@ def _dump_tree(root, prefix: str = "vl", depth: int = 0, seen: set | None = None
         _dump_tree(val, f"{prefix}.{name}", depth + 1, seen)
 
 
-def run_ocr_vl(image_bgr: np.ndarray, device: str = "cpu") -> list[dict]:
+def run_ocr_vl(
+    image_bgr: np.ndarray,
+    device: str = "cpu",
+    max_new_tokens: int = 512,
+) -> list[dict]:
+    """Run PaddleOCR-VL on a single image. `max_new_tokens` caps per-block
+    generation; the library default of 4096 lets pathological blocks (e.g.
+    long digit runs) burn minutes on one frame, so 512 is plenty for a
+    single UI line while still leaving headroom for paragraphs."""
     vl = _get_vl(device)
-    pages = list(vl.predict(image_bgr))
+    pages = list(vl.predict(image_bgr, max_new_tokens=max_new_tokens))
 
     out: list[dict] = []
     for page in pages:
