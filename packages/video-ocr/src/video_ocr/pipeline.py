@@ -40,13 +40,17 @@ def process_video(
         iter_keyframes(video_path, sample_fps=sample_fps, phash_threshold=phash_threshold),
         1,
     ):
+        import hashlib
+
         h, w = kf.image_bgr.shape[:2]
+        digest = hashlib.md5(kf.image_bgr.tobytes()).hexdigest()[:12]
         t0 = time.perf_counter()
         if engine == "ppocr-vl":
             texts = run_ocr_vl(kf.image_bgr, device=device)
         else:
             texts = run_ocr(kf.image_bgr, lang=lang, variant=variant)
         elapsed = time.perf_counter() - t0
+        total_chars = sum(len(str(t.get("text", ""))) for t in texts)
         ocr_total += elapsed
         records.append(
             {
@@ -61,7 +65,8 @@ def process_video(
         kf.image_bgr = None  # type: ignore[assignment]
         print(
             f"  [{i:>3}] frame={kf.index:>6} t={kf.timestamp:6.2f}s  "
-            f"size={w}x{h}  texts={len(texts):>3}  ocr={elapsed:6.2f}s"
+            f"size={w}x{h}  md5={digest}  "
+            f"texts={len(texts):>3}  chars={total_chars:>4}  ocr={elapsed:6.2f}s"
         )
         if max_keyframes is not None and i >= max_keyframes:
             break

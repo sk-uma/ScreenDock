@@ -23,10 +23,17 @@ def is_image_path(path: Path) -> bool:
 
 
 def read_image(path: Path) -> np.ndarray:
-    # cv2.imread can choke on non-ASCII paths; go through PIL to be safe.
-    with Image.open(path) as pil:
-        rgb = pil.convert("RGB")
-    return cv2.cvtColor(np.array(rgb), cv2.COLOR_RGB2BGR)
+    # Decode via cv2.imdecode so the resulting array matches what
+    # VideoCapture.read() returns byte-for-byte (contiguous BGR uint8),
+    # avoiding subtle differences between the video and image code paths.
+    data = np.fromfile(str(path), dtype=np.uint8)
+    img = cv2.imdecode(data, cv2.IMREAD_COLOR)
+    if img is None:
+        # Fallback via PIL if cv2 can't decode (e.g. exotic PNG variants).
+        with Image.open(path) as pil:
+            rgb = pil.convert("RGB")
+        img = cv2.cvtColor(np.array(rgb), cv2.COLOR_RGB2BGR)
+    return np.ascontiguousarray(img)
 
 
 def extract_frame_at(video_path: Path, timestamp_s: float) -> tuple[np.ndarray, float]:
@@ -117,8 +124,14 @@ def render_preview(
     else:
         frame, actual_ts = extract_frame_at(input_path, timestamp_s)
 
+    import hashlib
+
     h, w = frame.shape[:2]
-    print(f"input: {input_path.name}  size={w}x{h}  dtype={frame.dtype}")
+    digest = hashlib.md5(frame.tobytes()).hexdigest()[:12]
+    print(
+        f"input: {input_path.name}  size={w}x{h}  "
+        f"dtype={frame.dtype}  contig={frame.flags['C_CONTIGUOUS']}  md5={digest}"
+    )
 
     t0 = time.perf_counter()
     if engine == "ppocr-vl":
@@ -126,6 +139,9 @@ def render_preview(
     else:
         texts = run_ocr(frame, lang=lang, variant=variant)
     ocr_elapsed = time.perf_counter() - t0
+
+    total_chars = sum(len(str(t.get("text", ""))) for t in texts)
+    print(f"ocr: {len(texts)} blocks, {total_chars} chars, {ocr_elapsed:.2f}s")
 
     img = draw_bboxes(frame, texts)
     output_path = Path(output_path)
