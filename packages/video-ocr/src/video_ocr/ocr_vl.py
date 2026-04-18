@@ -8,9 +8,15 @@ We normalize the block output into the same {text, confidence, bbox} shape
 that run_ocr (PP-OCRv5) produces so the rest of the pipeline (JSON schema,
 search index, debug page) keeps working unchanged.
 """
+import os
+import time
 from functools import lru_cache
 
 import numpy as np
+
+
+def _debug_enabled() -> bool:
+    return os.environ.get("VIDEO_OCR_DEBUG_TOKENS", "").lower() in {"1", "true", "yes"}
 
 
 @lru_cache(maxsize=2)
@@ -24,12 +30,66 @@ def _get_vl(device: str):
 
     from paddleocr import PaddleOCRVL
 
-    return PaddleOCRVL(
+    vl = PaddleOCRVL(
         pipeline_version="v1.5",
         device=device,
         use_doc_orientation_classify=False,
         use_doc_unwarping=False,
     )
+    if _debug_enabled():
+        _install_generate_hook(vl)
+    return vl
+
+
+def _install_generate_hook(vl) -> None:
+    """Wrap the VL recognizer's .generate() to log token counts and the raw
+    decoded string per block, before post-processing strips markdown/LaTeX.
+
+    Enabled only when VIDEO_OCR_DEBUG_TOKENS=1 so production runs stay quiet.
+    """
+    try:
+        rec = vl.paddlex_pipeline._pipeline.vl_rec_model
+        predictor = rec.batch_sampler.predictor if hasattr(rec, "batch_sampler") else rec
+    except AttributeError:
+        print("[debug] could not reach vl_rec predictor; skipping token hook")
+        return
+
+    # Hook postprocess so we see the raw text (after decode, before block
+    # structuring). Token-count logging happens in the generate wrap below.
+    infer = getattr(predictor, "infer", None)
+    if infer is None:
+        print("[debug] no predictor.infer; skipping token hook")
+        return
+    original_generate = infer.generate
+
+    def wrapped_generate(data, *args, **kwargs):
+        t0 = time.perf_counter()
+        preds = original_generate(data, *args, **kwargs)
+        elapsed = time.perf_counter() - t0
+        # preds is a paddle tensor of token ids, shape [batch, seq_len].
+        try:
+            shape = tuple(preds.shape)
+        except Exception:
+            shape = ("?",)
+        print(f"  [debug] generate: tokens={shape}  elapsed={elapsed:.2f}s")
+        return preds
+
+    infer.generate = wrapped_generate
+
+    processor = getattr(predictor, "processor", None)
+    if processor is not None and hasattr(processor, "postprocess"):
+        original_post = processor.postprocess
+
+        def wrapped_post(preds, *args, **kwargs):
+            texts = original_post(preds, *args, **kwargs)
+            for i, t in enumerate(texts if isinstance(texts, list) else [texts]):
+                s = str(t)
+                if len(s) > 200:
+                    s = s[:200] + f"…(+{len(str(t)) - 200} chars)"
+                print(f"  [debug] decoded[{i}] len={len(str(t))}  {s!r}")
+            return texts
+
+        processor.postprocess = wrapped_post
 
 
 def run_ocr_vl(image_bgr: np.ndarray, device: str = "cpu") -> list[dict]:
