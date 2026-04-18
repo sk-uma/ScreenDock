@@ -5,14 +5,17 @@ description = "Extract OCR text and page-transition keyframes from screen record
 requires-python = ">=3.10"
 dependencies = [
     "paddleocr>=2.8.0",
-    "paddlepaddle>=2.6.0",
+    "paddlex[ocr]>=3.4.0",
     "opencv-python>=4.9.0",
     "imagehash>=4.3.1",
     "pillow>=10.0.0",
     "numpy>=1.24.0,<2.0",
     "typer>=0.12.0",
-    "paddlex[ocr]>=3.4.0",
 ]
+
+[project.optional-dependencies]
+cpu = ["paddlepaddle>=3.2.0"]
+gpu = ["paddlepaddle-gpu>=3.2.0"]
 
 [project.scripts]
 video-ocr = "video_ocr.cli:app"
@@ -23,3 +26,22 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/video_ocr"]
+
+[tool.uv]
+# cpu and gpu wheels share the paddlepaddle* name namespace but come from
+# different indexes. Treat the extras as mutually exclusive so uv doesn't
+# try to resolve both at once.
+conflicts = [
+    [
+        { extra = "cpu" },
+        { extra = "gpu" },
+    ],
+]
+
+[[tool.uv.index]]
+name = "paddle-cu130"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cu130/"
+explicit = true
+
+[tool.uv.sources]
+paddlepaddle-gpu = { index = "paddle-cu130" }
