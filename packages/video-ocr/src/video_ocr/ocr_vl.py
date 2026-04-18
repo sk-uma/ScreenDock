@@ -135,8 +135,8 @@ def _safe_shape(obj):
 
 
 def _dump_tree(root, prefix: str = "vl", depth: int = 0, seen: set | None = None) -> None:
-    """Print attributes of interest for each node. Uses dir() so underscore-
-    prefixed and slot-based attributes are also visible."""
+    """Print non-callable attributes by combining vars() and dir() so both
+    __dict__ and property descriptors are surfaced."""
     if seen is None:
         seen = set()
     if depth > 4 or id(root) in seen:
@@ -149,20 +149,18 @@ def _dump_tree(root, prefix: str = "vl", depth: int = 0, seen: set | None = None
         except Exception:
             return None
 
-    # Look at every non-dunder attribute, surface the ones whose names or
-    # types look container-like.
-    for name in dir(root):
-        if name.startswith("__"):
-            continue
+    names = set()
+    if hasattr(root, "__dict__"):
+        names.update(vars(root).keys())
+    names.update(n for n in dir(root) if not n.startswith("__"))
+
+    for name in sorted(names):
         val = safe_get(root, name)
-        if val is None or callable(val) or isinstance(val, (str, int, float, bool, bytes, list, tuple, dict, set)):
-            # Strings/ints/collections aren't predictor objects. Only descend
-            # into custom objects.
+        if val is None or callable(val):
+            continue
+        if isinstance(val, (str, int, float, bool, bytes)):
             continue
         type_name = type(val).__name__
-        if not any(k in name.lower() for k in ("model", "pipeline", "predictor", "rec", "infer", "processor")) \
-                and not any(k in type_name.lower() for k in ("model", "pipeline", "predictor", "processor")):
-            continue
         marker = ""
         if hasattr(val, "infer") and hasattr(val, "processor"):
             marker = "  <-- has .infer + .processor"
