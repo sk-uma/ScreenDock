@@ -4,6 +4,7 @@ Uses PIL so we can draw Japanese text labels (cv2.putText can't render CJK).
 A PaddleX-bundled CJK font is preferred; if unavailable, falls back to Pillow's
 default bitmap font and labels will be ASCII-only.
 """
+import time
 from pathlib import Path
 
 import cv2
@@ -105,9 +106,10 @@ def render_preview(
     device: str = "cpu",
     lang: str = "japan",
     variant: str = "mobile",
-) -> tuple[Path, float | None, list[dict]]:
+) -> tuple[Path, float | None, list[dict], float]:
     """Render one frame (from image file or from video at `timestamp_s`) with
-    bbox overlay. Returns (output_path, actual_timestamp_or_None, texts)."""
+    bbox overlay. Returns (output_path, actual_timestamp_or_None, texts,
+    ocr_seconds)."""
     input_path = Path(input_path)
     if is_image_path(input_path):
         frame = read_image(input_path)
@@ -115,13 +117,15 @@ def render_preview(
     else:
         frame, actual_ts = extract_frame_at(input_path, timestamp_s)
 
+    t0 = time.perf_counter()
     if engine == "ppocr-vl":
         texts = run_ocr_vl(frame, device=device)
     else:
         texts = run_ocr(frame, lang=lang, variant=variant)
+    ocr_elapsed = time.perf_counter() - t0
 
     img = draw_bboxes(frame, texts)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(output_path)
-    return output_path, actual_ts, texts
+    return output_path, actual_ts, texts, ocr_elapsed

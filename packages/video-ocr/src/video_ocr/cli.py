@@ -48,7 +48,7 @@ def preview(
     variant: str = typer.Option("mobile", "--variant"),
 ):
     """Run OCR on a single frame (from video or image) and save a PNG with bbox overlay."""
-    out_path, actual_ts, texts = render_preview(
+    out_path, actual_ts, texts, ocr_seconds = render_preview(
         input_path=input,
         output_path=output,
         timestamp_s=at,
@@ -57,10 +57,8 @@ def preview(
         lang=lang,
         variant=variant,
     )
-    if actual_ts is None:
-        print(f"image: {input.name}  ({len(texts)} texts)")
-    else:
-        print(f"frame @ t={actual_ts:.3f}s  ({len(texts)} texts)")
+    where = f"image: {input.name}" if actual_ts is None else f"frame @ t={actual_ts:.3f}s"
+    print(f"{where}  ({len(texts)} texts, engine={engine}, device={device}, ocr={ocr_seconds:.2f}s)")
     for i, t in enumerate(texts):
         print(f"  [{i:>2}] {float(t.get('confidence', 0)) * 100:5.1f}%  {t.get('text')}")
     print(f"wrote {out_path}")
