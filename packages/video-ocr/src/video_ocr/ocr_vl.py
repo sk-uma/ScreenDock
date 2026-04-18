@@ -70,10 +70,34 @@ def _patch_paddleocr_vl_class() -> None:
         t0 = time.perf_counter()
         out = original_generate(self, inputs, **kwargs)
         elapsed = time.perf_counter() - t0
-        shape = _safe_shape(out)
+        # Paddle .generate often returns (token_ids, scores); pick the first.
+        token_tensor = out
+        if isinstance(out, tuple) and len(out) >= 1:
+            token_tensor = out[0]
+        gen_shape = _safe_shape(token_tensor)
         seq_in = _safe_shape(inputs.get("input_ids") if isinstance(inputs, dict) else inputs)
         new_tokens = kwargs.get("max_new_tokens", "?")
-        print(f"  [debug] VL.generate  input_ids={seq_in}  output={shape}  max_new={new_tokens}  elapsed={elapsed:.2f}s")
+        # Decode the generated ids to preview the raw text when it ran long.
+        preview = ""
+        try:
+            if elapsed > 5.0 and hasattr(token_tensor, "numpy"):
+                ids = token_tensor.numpy().tolist()
+                if ids and isinstance(ids[0], list):
+                    ids = ids[0]
+                tok = getattr(self, "tokenizer", None)
+                if tok is not None and hasattr(tok, "decode"):
+                    preview = tok.decode(ids, skip_special_tokens=False)
+                    if len(preview) > 200:
+                        preview = preview[:200] + f"…(+{len(preview) - 200} chars)"
+        except Exception as e:  # noqa: BLE001
+            preview = f"<decode failed: {e}>"
+        msg = (
+            f"  [debug] VL.generate  in={seq_in}  gen={gen_shape}  "
+            f"max_new={new_tokens}  elapsed={elapsed:.2f}s"
+        )
+        if preview:
+            msg += f"\n    raw={preview!r}"
+        print(msg)
         return out
 
     PaddleOCRVLForConditionalGeneration.generate = wrapped_generate
