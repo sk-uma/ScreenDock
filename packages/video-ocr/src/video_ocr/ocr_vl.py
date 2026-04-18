@@ -94,7 +94,7 @@ def _find_vl_predictor(root, depth: int = 0, seen: set | None = None):
     recognizer (has both `.infer.generate` and `.processor.postprocess`)."""
     if seen is None:
         seen = set()
-    if depth > 5 or id(root) in seen:
+    if depth > 6 or id(root) in seen:
         return None
     seen.add(id(root))
 
@@ -104,16 +104,23 @@ def _find_vl_predictor(root, depth: int = 0, seen: set | None = None):
             and processor is not None and hasattr(processor, "postprocess"):
         return root
 
-    for name in (
-        "paddlex_pipeline", "_pipeline", "pipeline",
-        "vl_rec_model", "vl_rec", "rec_model",
-        "model", "predictor",
-    ):
-        child = getattr(root, name, None)
-        if child is not None and not callable(child):
-            hit = _find_vl_predictor(child, depth + 1, seen)
-            if hit is not None:
-                return hit
+    def safe_get(obj, name):
+        try:
+            return getattr(obj, name)
+        except Exception:
+            return None
+
+    for name in dir(root):
+        if name.startswith("__"):
+            continue
+        child = safe_get(root, name)
+        if child is None or callable(child):
+            continue
+        if isinstance(child, (str, int, float, bool, bytes, list, tuple, dict, set)):
+            continue
+        hit = _find_vl_predictor(child, depth + 1, seen)
+        if hit is not None:
+            return hit
     return None
 
 
@@ -128,37 +135,39 @@ def _safe_shape(obj):
 
 
 def _dump_tree(root, prefix: str = "vl", depth: int = 0, seen: set | None = None) -> None:
-    """Print a shallow attribute tree so we can spot where the VL predictor
-    actually lives in this particular paddleocr/paddlex version."""
+    """Print attributes of interest for each node. Uses dir() so underscore-
+    prefixed and slot-based attributes are also visible."""
     if seen is None:
         seen = set()
     if depth > 4 or id(root) in seen:
         return
     seen.add(id(root))
 
-    interesting = (
-        "paddlex_pipeline", "_pipeline", "pipeline",
-        "vl_rec_model", "vl_rec", "rec_model",
-        "text_rec_model", "model", "predictor",
-        "infer", "processor",
-        "_pipeline_cls", "_pipelines", "models",
-    )
-    attrs = [a for a in interesting if hasattr(root, a)]
-    # Also surface any attribute that smells like a model container.
-    for a in vars(root) if hasattr(root, "__dict__") else ():
-        if a in interesting:
-            continue
-        if any(k in a.lower() for k in ("model", "pipeline", "predictor", "rec")):
-            attrs.append(a)
+    def safe_get(obj, name):
+        try:
+            return getattr(obj, name)
+        except Exception:
+            return None
 
-    for name in attrs:
-        child = getattr(root, name, None)
+    # Look at every non-dunder attribute, surface the ones whose names or
+    # types look container-like.
+    for name in dir(root):
+        if name.startswith("__"):
+            continue
+        val = safe_get(root, name)
+        if val is None or callable(val) or isinstance(val, (str, int, float, bool, bytes, list, tuple, dict, set)):
+            # Strings/ints/collections aren't predictor objects. Only descend
+            # into custom objects.
+            continue
+        type_name = type(val).__name__
+        if not any(k in name.lower() for k in ("model", "pipeline", "predictor", "rec", "infer", "processor")) \
+                and not any(k in type_name.lower() for k in ("model", "pipeline", "predictor", "processor")):
+            continue
         marker = ""
-        if hasattr(child, "infer") and hasattr(child, "processor"):
+        if hasattr(val, "infer") and hasattr(val, "processor"):
             marker = "  <-- has .infer + .processor"
-        print(f"  [debug] {prefix}.{name}: {type(child).__name__}{marker}")
-        if child is not None and not callable(child):
-            _dump_tree(child, f"{prefix}.{name}", depth + 1, seen)
+        print(f"  [debug] {prefix}.{name}: {type_name}{marker}")
+        _dump_tree(val, f"{prefix}.{name}", depth + 1, seen)
 
 
 def run_ocr_vl(image_bgr: np.ndarray, device: str = "cpu") -> list[dict]:
