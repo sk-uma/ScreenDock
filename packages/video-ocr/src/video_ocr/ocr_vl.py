@@ -28,20 +28,64 @@ def _get_vl(device: str):
 
     paddle.device.set_device(device)
 
+    # Install the debug hook at class level BEFORE the pipeline instantiates
+    # the model. Class-level monkey-patching avoids having to find the exact
+    # object reference in the paddleocr/paddlex wrapper graph.
+    if _debug_enabled():
+        _patch_paddleocr_vl_class()
+
     from paddleocr import PaddleOCRVL
 
-    vl = PaddleOCRVL(
+    return PaddleOCRVL(
         pipeline_version="v1.5",
         device=device,
         use_doc_orientation_classify=False,
         use_doc_unwarping=False,
     )
-    if _debug_enabled():
-        _install_generate_hook(vl)
-    return vl
 
 
-def _install_generate_hook(vl) -> None:
+_patched = False
+
+
+def _patch_paddleocr_vl_class() -> None:
+    """Wrap PaddleOCRVLForConditionalGeneration.generate at class level.
+
+    Every instance the pipeline creates shares this method, so patching the
+    class is enough — no need to crawl the wrapper object graph.
+    """
+    global _patched
+    if _patched:
+        return
+    try:
+        from paddlex.inference.models.doc_vlm.modeling.paddleocr_vl._paddleocr_vl import (
+            PaddleOCRVLForConditionalGeneration,
+        )
+    except ImportError as e:
+        print(f"[debug] could not import PaddleOCRVLForConditionalGeneration: {e}")
+        return
+
+    original_generate = PaddleOCRVLForConditionalGeneration.generate
+
+    def wrapped_generate(self, inputs, **kwargs):
+        t0 = time.perf_counter()
+        out = original_generate(self, inputs, **kwargs)
+        elapsed = time.perf_counter() - t0
+        shape = _safe_shape(out)
+        seq_in = _safe_shape(inputs.get("input_ids") if isinstance(inputs, dict) else inputs)
+        new_tokens = kwargs.get("max_new_tokens", "?")
+        print(f"  [debug] VL.generate  input_ids={seq_in}  output={shape}  max_new={new_tokens}  elapsed={elapsed:.2f}s")
+        return out
+
+    PaddleOCRVLForConditionalGeneration.generate = wrapped_generate
+    print("[debug] patched PaddleOCRVLForConditionalGeneration.generate")
+    _patched = True
+
+
+def _install_generate_hook(vl) -> None:  # kept for reference; unused
+    return _install_generate_hook_legacy(vl)
+
+
+def _install_generate_hook_legacy(vl) -> None:
     """Wrap the VL recognizer's .generate() so we can see per-block token
     counts and the raw decoded string before post-processing strips markdown.
 
