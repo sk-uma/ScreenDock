@@ -36,25 +36,31 @@ def run(
 
 @app.command()
 def preview(
-    video: Path = typer.Argument(..., exists=True, readable=True, help="Input video file."),
-    at: float = typer.Option(0.0, "--at", "-t", help="Timestamp in seconds to render."),
+    input: Path = typer.Argument(
+        ..., exists=True, readable=True,
+        help="Input video or image file (png/jpg/webp/bmp/tif).",
+    ),
+    at: float = typer.Option(0.0, "--at", "-t", help="Timestamp in seconds (ignored for image input)."),
     output: Path = typer.Option(Path("preview.png"), "--output", "-o", help="Annotated PNG path."),
     engine: str = typer.Option("ppocr", "--engine"),
     device: str = typer.Option("cpu", "--device"),
     lang: str = typer.Option("japan", "--lang"),
     variant: str = typer.Option("mobile", "--variant"),
 ):
-    """Run OCR on a single frame and save a PNG with bbox overlay."""
+    """Run OCR on a single frame (from video or image) and save a PNG with bbox overlay."""
     out_path, actual_ts, texts = render_preview(
-        video_path=video,
-        timestamp_s=at,
+        input_path=input,
         output_path=output,
+        timestamp_s=at,
         engine=engine,
         device=device,
         lang=lang,
         variant=variant,
     )
-    print(f"frame @ t={actual_ts:.3f}s  ({len(texts)} texts)")
+    if actual_ts is None:
+        print(f"image: {input.name}  ({len(texts)} texts)")
+    else:
+        print(f"frame @ t={actual_ts:.3f}s  ({len(texts)} texts)")
     for i, t in enumerate(texts):
         print(f"  [{i:>2}] {float(t.get('confidence', 0)) * 100:5.1f}%  {t.get('text')}")
     print(f"wrote {out_path}")

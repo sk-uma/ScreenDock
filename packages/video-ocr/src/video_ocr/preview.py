@@ -14,6 +14,20 @@ from video_ocr.ocr import run_ocr
 from video_ocr.ocr_vl import run_ocr_vl
 
 
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
+
+
+def is_image_path(path: Path) -> bool:
+    return path.suffix.lower() in IMAGE_EXTS
+
+
+def read_image(path: Path) -> np.ndarray:
+    # cv2.imread can choke on non-ASCII paths; go through PIL to be safe.
+    with Image.open(path) as pil:
+        rgb = pil.convert("RGB")
+    return cv2.cvtColor(np.array(rgb), cv2.COLOR_RGB2BGR)
+
+
 def extract_frame_at(video_path: Path, timestamp_s: float) -> tuple[np.ndarray, float]:
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
@@ -84,15 +98,23 @@ def draw_bboxes(image_bgr: np.ndarray, texts: list[dict]) -> Image.Image:
 
 
 def render_preview(
-    video_path: Path,
-    timestamp_s: float,
+    input_path: Path,
     output_path: Path,
+    timestamp_s: float = 0.0,
     engine: str = "ppocr",
     device: str = "cpu",
     lang: str = "japan",
     variant: str = "mobile",
-) -> tuple[Path, float, list[dict]]:
-    frame, actual_ts = extract_frame_at(video_path, timestamp_s)
+) -> tuple[Path, float | None, list[dict]]:
+    """Render one frame (from image file or from video at `timestamp_s`) with
+    bbox overlay. Returns (output_path, actual_timestamp_or_None, texts)."""
+    input_path = Path(input_path)
+    if is_image_path(input_path):
+        frame = read_image(input_path)
+        actual_ts: float | None = None
+    else:
+        frame, actual_ts = extract_frame_at(input_path, timestamp_s)
+
     if engine == "ppocr-vl":
         texts = run_ocr_vl(frame, device=device)
     else:
