@@ -59,21 +59,53 @@ def _conf_color(c: float) -> tuple[int, int, int]:
     return (0xCC, 0x33, 0x33)
 
 
-def _load_cjk_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    # PaddleX ships a CJK-capable font with its pipelines; prefer that so
-    # Japanese labels render properly.
-    candidates = [
-        "/home/takuk/ScreenDock/ScreenDock/packages/video-ocr/.venv/lib/python3.13/site-packages/paddlex/utils/fonts/PingFang-SC-Regular.ttf",
-        "/home/takuk/ScreenDock/ScreenDock/packages/video-ocr/.venv/lib/python3.13/site-packages/paddlex/utils/fonts/simfang.ttf",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+_FONT_CACHE_DIR = Path(__file__).resolve().parents[2] / ".cache" / "fonts"
+_NOTO_SANS_JP_URL = (
+    "https://raw.githubusercontent.com/googlefonts/noto-cjk/"
+    "main/Sans/OTF/Japanese/NotoSansCJKjp-Regular.otf"
+)
+
+
+def _ensure_cjk_font() -> Path | None:
+    """Return a path to any TTF/OTF with Japanese coverage, downloading
+    Noto Sans CJK JP on first use if nothing local works."""
+    system_candidates = [
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
+        "/usr/share/fonts/truetype/takao-gothic/TakaoGothic.ttf",
+        "/usr/share/fonts/opentype/ipaexfont-gothic/ipaexg.ttf",
+        "/mnt/c/Windows/Fonts/YuGothM.ttc",
+        "/mnt/c/Windows/Fonts/msgothic.ttc",
+        "/mnt/c/Windows/Fonts/meiryo.ttc",
     ]
-    for p in candidates:
+    for p in system_candidates:
         if Path(p).exists():
-            try:
-                return ImageFont.truetype(p, size=size)
-            except OSError:
-                continue
+            return Path(p)
+
+    cached = _FONT_CACHE_DIR / "NotoSansCJKjp-Regular.otf"
+    if cached.exists() and cached.stat().st_size > 1_000_000:
+        return cached
+
+    try:
+        import urllib.request
+
+        _FONT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        print(f"[font] downloading Noto Sans CJK JP to {cached} ...")
+        urllib.request.urlretrieve(_NOTO_SANS_JP_URL, cached)
+        return cached
+    except Exception as e:  # noqa: BLE001
+        print(f"[font] could not download CJK font: {e}")
+        return None
+
+
+def _load_cjk_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    path = _ensure_cjk_font()
+    if path is not None:
+        try:
+            return ImageFont.truetype(str(path), size=size)
+        except OSError as e:
+            print(f"[font] failed to load {path}: {e}")
     return ImageFont.load_default()
 
 
