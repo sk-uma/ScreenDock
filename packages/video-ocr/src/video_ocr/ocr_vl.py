@@ -51,7 +51,8 @@ def _install_generate_hook(vl) -> None:
     """
     predictor = _find_vl_predictor(vl)
     if predictor is None:
-        print("[debug] could not locate VL predictor; skipping token hook")
+        print("[debug] could not locate VL predictor; dumping attribute tree:")
+        _dump_tree(vl)
         return
     print(f"[debug] vl predictor located: {type(predictor).__name__}")
 
@@ -124,6 +125,40 @@ def _safe_shape(obj):
             return (len(obj),)
         except Exception:
             return type(obj).__name__
+
+
+def _dump_tree(root, prefix: str = "vl", depth: int = 0, seen: set | None = None) -> None:
+    """Print a shallow attribute tree so we can spot where the VL predictor
+    actually lives in this particular paddleocr/paddlex version."""
+    if seen is None:
+        seen = set()
+    if depth > 4 or id(root) in seen:
+        return
+    seen.add(id(root))
+
+    interesting = (
+        "paddlex_pipeline", "_pipeline", "pipeline",
+        "vl_rec_model", "vl_rec", "rec_model",
+        "text_rec_model", "model", "predictor",
+        "infer", "processor",
+        "_pipeline_cls", "_pipelines", "models",
+    )
+    attrs = [a for a in interesting if hasattr(root, a)]
+    # Also surface any attribute that smells like a model container.
+    for a in vars(root) if hasattr(root, "__dict__") else ():
+        if a in interesting:
+            continue
+        if any(k in a.lower() for k in ("model", "pipeline", "predictor", "rec")):
+            attrs.append(a)
+
+    for name in attrs:
+        child = getattr(root, name, None)
+        marker = ""
+        if hasattr(child, "infer") and hasattr(child, "processor"):
+            marker = "  <-- has .infer + .processor"
+        print(f"  [debug] {prefix}.{name}: {type(child).__name__}{marker}")
+        if child is not None and not callable(child):
+            _dump_tree(child, f"{prefix}.{name}", depth + 1, seen)
 
 
 def run_ocr_vl(image_bgr: np.ndarray, device: str = "cpu") -> list[dict]:
