@@ -42,36 +42,32 @@ def _get_vl(device: str):
 
 
 def _install_generate_hook(vl) -> None:
-    """Wrap the VL recognizer's .generate() to log token counts and the raw
-    decoded string per block, before post-processing strips markdown/LaTeX.
+    """Wrap the VL recognizer's .generate() so we can see per-block token
+    counts and the raw decoded string before post-processing strips markdown.
 
-    Enabled only when VIDEO_OCR_DEBUG_TOKENS=1 so production runs stay quiet.
+    The paddleocr/paddlex object graph differs by version and by whether
+    "parallel" wrappers are present, so we walk attributes dynamically instead
+    of hard-coding a path.
     """
-    try:
-        rec = vl.paddlex_pipeline._pipeline.vl_rec_model
-        predictor = rec.batch_sampler.predictor if hasattr(rec, "batch_sampler") else rec
-    except AttributeError:
-        print("[debug] could not reach vl_rec predictor; skipping token hook")
+    predictor = _find_vl_predictor(vl)
+    if predictor is None:
+        print("[debug] could not locate VL predictor; skipping token hook")
+        return
+    print(f"[debug] vl predictor located: {type(predictor).__name__}")
+
+    infer = getattr(predictor, "infer", None)
+    if infer is None or not hasattr(infer, "generate"):
+        print("[debug] predictor has no .infer.generate; skipping token hook")
         return
 
-    # Hook postprocess so we see the raw text (after decode, before block
-    # structuring). Token-count logging happens in the generate wrap below.
-    infer = getattr(predictor, "infer", None)
-    if infer is None:
-        print("[debug] no predictor.infer; skipping token hook")
-        return
     original_generate = infer.generate
 
-    def wrapped_generate(data, *args, **kwargs):
+    def wrapped_generate(*args, **kwargs):
         t0 = time.perf_counter()
-        preds = original_generate(data, *args, **kwargs)
+        preds = original_generate(*args, **kwargs)
         elapsed = time.perf_counter() - t0
-        # preds is a paddle tensor of token ids, shape [batch, seq_len].
-        try:
-            shape = tuple(preds.shape)
-        except Exception:
-            shape = ("?",)
-        print(f"  [debug] generate: tokens={shape}  elapsed={elapsed:.2f}s")
+        shape = _safe_shape(preds)
+        print(f"  [debug] generate  tokens={shape}  elapsed={elapsed:.2f}s")
         return preds
 
     infer.generate = wrapped_generate
@@ -82,14 +78,52 @@ def _install_generate_hook(vl) -> None:
 
         def wrapped_post(preds, *args, **kwargs):
             texts = original_post(preds, *args, **kwargs)
-            for i, t in enumerate(texts if isinstance(texts, list) else [texts]):
+            items = texts if isinstance(texts, list) else [texts]
+            for i, t in enumerate(items):
                 s = str(t)
-                if len(s) > 200:
-                    s = s[:200] + f"…(+{len(str(t)) - 200} chars)"
-                print(f"  [debug] decoded[{i}] len={len(str(t))}  {s!r}")
+                trunc = s[:200] + f"…(+{len(s) - 200} chars)" if len(s) > 200 else s
+                print(f"  [debug] decoded[{i}]  len={len(s)}  {trunc!r}")
             return texts
 
         processor.postprocess = wrapped_post
+
+
+def _find_vl_predictor(root, depth: int = 0, seen: set | None = None):
+    """DFS through attributes to find an object that looks like the VL
+    recognizer (has both `.infer.generate` and `.processor.postprocess`)."""
+    if seen is None:
+        seen = set()
+    if depth > 5 or id(root) in seen:
+        return None
+    seen.add(id(root))
+
+    infer = getattr(root, "infer", None)
+    processor = getattr(root, "processor", None)
+    if infer is not None and hasattr(infer, "generate") \
+            and processor is not None and hasattr(processor, "postprocess"):
+        return root
+
+    for name in (
+        "paddlex_pipeline", "_pipeline", "pipeline",
+        "vl_rec_model", "vl_rec", "rec_model",
+        "model", "predictor",
+    ):
+        child = getattr(root, name, None)
+        if child is not None and not callable(child):
+            hit = _find_vl_predictor(child, depth + 1, seen)
+            if hit is not None:
+                return hit
+    return None
+
+
+def _safe_shape(obj):
+    try:
+        return tuple(obj.shape)
+    except Exception:
+        try:
+            return (len(obj),)
+        except Exception:
+            return type(obj).__name__
 
 
 def run_ocr_vl(image_bgr: np.ndarray, device: str = "cpu") -> list[dict]:
