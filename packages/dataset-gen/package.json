@@ -7,6 +7,7 @@
     "generate-designs": "node --import tsx/esm src/generate-designs.ts",
     "generate-html": "node --import tsx/esm src/generate-html.ts",
     "capture": "node --import tsx/esm src/capture.ts",
+    "serve": "node --import tsx/esm src/serve.ts",
     "pipeline": "node --import tsx/esm src/pipeline.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
