@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "generate": "node --import tsx/esm src/generate.ts",
+    "generate-designs": "node --import tsx/esm src/generate-designs.ts",
+    "generate-html": "node --import tsx/esm src/generate-html.ts",
     "capture": "node --import tsx/esm src/capture.ts",
     "pipeline": "node --import tsx/esm src/pipeline.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -12,7 +13,8 @@
   "dependencies": {
     "@faker-js/faker": "^9.0.3",
     "playwright": "^1.47.0",
-    "seedrandom": "^3.0.5"
+    "seedrandom": "^3.0.5",
+    "yaml": "^2.8.3"
   },
   "devDependencies": {
     "@types/node": "^22.7.0",

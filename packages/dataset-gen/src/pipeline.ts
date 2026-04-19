@@ -17,5 +17,6 @@ function run(script: string): Promise<void> {
   });
 }
 
-await run('generate');
+await run('generate-designs');
+await run('generate-html');
 await run('capture');
