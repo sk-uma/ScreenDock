@@ -8,3 +8,7 @@ assets
 .pnpm-cache/
 *.log
 .turbo/
+datasets/pages/
+datasets/screenshots/
+datasets/labels.jsonl
+**/.playwright-browsers/
